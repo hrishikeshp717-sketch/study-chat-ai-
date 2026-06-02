@@ -1,0 +1,965 @@
+from flask import Flask, request, jsonify, render_template_string, session, redirect
+import json
+import os
+import random
+from datetime import datetime
+
+app = Flask(__name__)
+app.secret_key = "study_ai_secret_key"
+
+DATA_FILE = "memory.json"
+
+
+# ==========================
+# DATABASE FUNCTIONS
+# ==========================
+
+def create_default_data():
+    return {
+        "users": {},
+        "notes": [],
+        "tasks": [],
+        "flashcards": [],
+        "quizzes": [],
+        "history": [],
+        "goals": [],
+        "research_notes": [],
+        "progress": {
+            "SAT": 0,
+            "JEE": 0
+        },
+        "study_streak": 0
+    }
+
+
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "w") as f:
+            json.dump(create_default_data(), f, indent=4)
+
+    with open(DATA_FILE, "r") as f:
+        return json.load(f)
+
+
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+
+# ==========================
+# USER FUNCTIONS
+# ==========================
+
+def register_user(username, password):
+    db = load_data()
+
+    if username in db["users"]:
+        return False
+
+    db["users"][username] = {
+        "password": password,
+        "created": str(datetime.now())
+    }
+
+    save_data(db)
+    return True
+
+
+def login_user(username, password):
+    db = load_data()
+
+    if username not in db["users"]:
+        return False
+
+    return db["users"][username]["password"] == password
+
+
+# ==========================
+# NOTES
+# ==========================
+
+def add_note(note):
+    db = load_data()
+
+    db["notes"].append({
+        "text": note,
+        "time": str(datetime.now())
+    })
+
+    save_data(db)
+
+
+def get_notes():
+    db = load_data()
+    return db["notes"]
+
+
+# ==========================
+# TASKS
+# ==========================
+
+def add_task(task):
+    db = load_data()
+
+    db["tasks"].append({
+        "task": task,
+        "done": False
+    })
+
+    save_data(db)
+
+
+def get_tasks():
+    db = load_data()
+    return db["tasks"]
+
+
+def complete_task(index):
+    db = load_data()
+
+    if index < len(db["tasks"]):
+        db["tasks"][index]["done"] = True
+
+    save_data(db)
+
+
+# ==========================
+# FLASHCARDS
+# ==========================
+
+def add_flashcard(front, back):
+    db = load_data()
+
+    db["flashcards"].append({
+        "front": front,
+        "back": back
+    })
+
+    save_data(db)
+
+
+def get_flashcards():
+    db = load_data()
+    return db["flashcards"]
+
+
+# ==========================
+# QUIZZES
+# ==========================
+
+SAT_QUESTIONS = [
+    {
+        "question": "What is 2x + 5 = 15?",
+        "answer": "5"
+    },
+    {
+        "question": "What is the area of a square with side 4?",
+        "answer": "16"
+    },
+    {
+        "question": "What is 10% of 200?",
+        "answer": "20"
+    }
+]
+
+JEE_QUESTIONS = [
+    {
+        "question": "SI unit of force?",
+        "answer": "newton"
+    },
+    {
+        "question": "Speed of light approx?",
+        "answer": "3x10^8"
+    }
+]
+
+
+def random_sat_question():
+    return random.choice(SAT_QUESTIONS)
+
+
+def random_jee_question():
+    return random.choice(JEE_QUESTIONS)
+
+
+# ==========================
+# GOALS
+# ==========================
+
+def add_goal(goal):
+    db = load_data()
+
+    db["goals"].append({
+        "goal": goal,
+        "created": str(datetime.now())
+    })
+
+    save_data(db)
+
+
+def get_goals():
+    db = load_data()
+    return db["goals"]
+
+
+# ==========================
+# PROGRESS TRACKING
+# ==========================
+
+def update_progress(exam, amount):
+    db = load_data()
+
+    if exam in db["progress"]:
+        db["progress"][exam] += amount
+
+    save_data(db)
+
+
+def get_progress():
+    db = load_data()
+    return db["progress"]
+
+
+# ==========================
+# STUDY STREAK
+# ==========================
+
+def increase_streak():
+    db = load_data()
+
+    db["study_streak"] += 1
+
+    save_data(db)
+
+
+def get_streak():
+    db = load_data()
+    return db["study_streak"]
+
+
+# ==========================
+# AI RESPONSE ENGINE
+# ==========================
+
+def generate_response(message):
+
+    msg = message.lower()
+
+    if "hello" in msg:
+        return "Hello! I am StudyAI."
+
+    if "sat" in msg:
+        return "SAT Tip: Focus on algebra, grammar, and timed practice."
+
+    if "jee" in msg:
+        return "JEE Tip: Master NCERT concepts and solve previous-year questions."
+
+    if "mit" in msg:
+        return "Build strong projects, maintain excellent grades, and show impact."
+
+    if "python" in msg:
+        return "Python is one of the best languages for AI and automation."
+
+    if "study plan" in msg:
+        return "Study 60 minutes daily: 30 min learning + 30 min practice."
+
+    return (
+        "You said: "
+        + message +
+        ". This is the offline AI engine. Later we can upgrade it to a real AI API."
+    )# ==========================
+# AUTH ROUTES
+# ==========================
+
+@app.route("/register", methods=["POST"])
+def register():
+
+    data = request.json
+
+    username = data.get("username", "")
+    password = data.get("password", "")
+
+    if not username or not password:
+        return jsonify({
+            "success": False,
+            "message": "Username and password required"
+        })
+
+    success = register_user(username, password)
+
+    if success:
+        return jsonify({
+            "success": True,
+            "message": "Account created"
+        })
+
+    return jsonify({
+        "success": False,
+        "message": "User already exists"
+    })
+
+
+@app.route("/login", methods=["POST"])
+def login():
+
+    data = request.json
+
+    username = data.get("username", "")
+    password = data.get("password", "")
+
+    if login_user(username, password):
+
+        session["user"] = username
+
+        return jsonify({
+            "success": True,
+            "message": "Logged in"
+        })
+
+    return jsonify({
+        "success": False,
+        "message": "Invalid credentials"
+    })
+
+
+@app.route("/logout")
+def logout():
+
+    session.clear()
+
+    return redirect("/")
+
+
+# ==========================
+# CHAT API
+# ==========================
+
+@app.route("/api/chat", methods=["POST"])
+def chat():
+
+    data = request.json
+
+    message = data.get("message", "")
+
+    db = load_data()
+
+    db["history"].append({
+        "user": message,
+        "time": str(datetime.now())
+    })
+
+    save_data(db)
+
+    response = generate_response(message)
+
+    return jsonify({
+        "reply": response
+    })
+
+
+# ==========================
+# NOTES API
+# ==========================
+
+@app.route("/api/add_note", methods=["POST"])
+def api_add_note():
+
+    data = request.json
+
+    note = data.get("note", "")
+
+    add_note(note)
+
+    return jsonify({
+        "status": "saved"
+    })
+
+
+@app.route("/api/notes")
+def api_notes():
+
+    return jsonify(get_notes())
+
+
+# ==========================
+# TASKS API
+# ==========================
+
+@app.route("/api/add_task", methods=["POST"])
+def api_add_task():
+
+    data = request.json
+
+    task = data.get("task", "")
+
+    add_task(task)
+
+    return jsonify({
+        "status": "added"
+    })
+
+
+@app.route("/api/tasks")
+def api_tasks():
+
+    return jsonify(get_tasks())
+
+
+@app.route("/api/task_complete/<int:index>")
+def api_complete_task(index):
+
+    complete_task(index)
+
+    return jsonify({
+        "status": "completed"
+    })
+
+
+# ==========================
+# FLASHCARD API
+# ==========================
+
+@app.route("/api/add_flashcard", methods=["POST"])
+def api_add_flashcard():
+
+    data = request.json
+
+    front = data.get("front", "")
+    back = data.get("back", "")
+
+    add_flashcard(front, back)
+
+    return jsonify({
+        "status": "created"
+    })
+
+
+@app.route("/api/flashcards")
+def api_flashcards():
+
+    return jsonify(get_flashcards())
+
+
+# ==========================
+# QUIZ API
+# ==========================
+
+@app.route("/api/quiz/sat")
+def sat_quiz():
+
+    question = random_sat_question()
+
+    return jsonify(question)
+
+
+@app.route("/api/quiz/jee")
+def jee_quiz():
+
+    question = random_jee_question()
+
+    return jsonify(question)
+
+
+# ==========================
+# GOALS API
+# ==========================
+
+@app.route("/api/add_goal", methods=["POST"])
+def api_add_goal():
+
+    data = request.json
+
+    goal = data.get("goal", "")
+
+    add_goal(goal)
+
+    return jsonify({
+        "status": "goal added"
+    })
+
+
+@app.route("/api/goals")
+def api_goals():
+
+    return jsonify(get_goals())
+
+
+# ==========================
+# PROGRESS API
+# ==========================
+
+@app.route("/api/progress")
+def api_progress():
+
+    return jsonify(get_progress())
+
+
+@app.route("/api/progress/sat")
+def add_sat_progress():
+
+    update_progress("SAT", 1)
+
+    return jsonify({
+        "status": "SAT progress updated"
+    })
+
+
+@app.route("/api/progress/jee")
+def add_jee_progress():
+
+    update_progress("JEE", 1)
+
+    return jsonify({
+        "status": "JEE progress updated"
+    })
+
+
+# ==========================
+# STREAK API
+# ==========================
+
+@app.route("/api/streak")
+def api_streak():
+
+    return jsonify({
+        "streak": get_streak()
+    })
+
+
+@app.route("/api/streak/increase")
+def api_increase_streak():
+
+    increase_streak()
+
+    return jsonify({
+        "status": "streak increased"
+    })
+
+
+# ==========================
+# HISTORY API
+# ==========================
+
+@app.route("/api/history")
+def api_history():
+
+    db = load_data()
+
+    return jsonify(db["history"])
+# ==========================
+# MAIN DASHBOARD PAGE
+# ==========================
+
+DASHBOARD_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+<title>StudyAI Pro</title>
+
+<style>
+
+body{
+background:#0f172a;
+color:white;
+font-family:Arial;
+margin:0;
+padding:0;
+}
+
+header{
+background:#1e293b;
+padding:15px;
+text-align:center;
+font-size:28px;
+font-weight:bold;
+}
+
+.container{
+padding:20px;
+}
+
+.card{
+background:#1e293b;
+padding:15px;
+margin-bottom:15px;
+border-radius:10px;
+}
+
+input{
+width:70%;
+padding:10px;
+border:none;
+border-radius:5px;
+}
+
+button{
+padding:10px;
+cursor:pointer;
+}
+
+#chatbox{
+height:250px;
+overflow-y:auto;
+border:1px solid #444;
+padding:10px;
+margin-bottom:10px;
+}
+
+.user{
+color:#38bdf8;
+}
+
+.ai{
+color:#4ade80;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<header>
+StudyAI Pro
+</header>
+
+<div class="container">
+
+<div class="card">
+<h2>AI Chat</h2>
+
+<div id="chatbox"></div>
+
+<input id="message" placeholder="Ask something">
+<button onclick="sendMessage()">Send</button>
+
+</div>
+
+<div class="card">
+<h2>Notes</h2>
+
+<input id="noteInput" placeholder="Write note">
+<button onclick="saveNote()">Save</button>
+
+<div id="notes"></div>
+</div>
+
+<div class="card">
+<h2>Tasks</h2>
+
+<input id="taskInput" placeholder="New Task">
+<button onclick="addTask()">Add</button>
+
+<div id="tasks"></div>
+</div>
+
+<div class="card">
+<h2>Flashcards</h2>
+
+<input id="front" placeholder="Front">
+<input id="back" placeholder="Back">
+
+<button onclick="createFlashcard()">
+Create
+</button>
+
+<div id="flashcards"></div>
+</div>
+
+<div class="card">
+<h2>Quiz</h2>
+
+<button onclick="satQuiz()">
+SAT Question
+</button>
+
+<button onclick="jeeQuiz()">
+JEE Question
+</button>
+
+<div id="quiz"></div>
+
+</div>
+
+<div class="card">
+<h2>Progress</h2>
+
+<button onclick="updateSAT()">
+SAT +1
+</button>
+
+<button onclick="updateJEE()">
+JEE +1
+</button>
+
+<div id="progress"></div>
+
+</div>
+
+<div class="card">
+<h2>Study Streak</h2>
+
+<button onclick="increaseStreak()">
+Study Today
+</button>
+
+<div id="streak"></div>
+
+</div>
+
+</div>
+
+<script>
+
+async function sendMessage(){
+
+let msg=document.getElementById("message").value;
+
+let res=await fetch("/api/chat",{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify({
+message:msg
+})
+});
+
+let data=await res.json();
+
+document.getElementById("chatbox").innerHTML +=
+"<p class='user'><b>You:</b> "+msg+"</p>";
+
+document.getElementById("chatbox").innerHTML +=
+"<p class='ai'><b>AI:</b> "+data.reply+"</p>";
+
+}
+
+async function saveNote(){
+
+let note=document.getElementById("noteInput").value;
+
+await fetch("/api/add_note",{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify({
+note:note
+})
+});
+
+loadNotes();
+}
+
+async function loadNotes(){
+
+let res=await fetch("/api/notes");
+
+let data=await res.json();
+
+let html="";
+
+for(let n of data){
+
+html += "<p>"+n.text+"</p>";
+
+}
+
+document.getElementById("notes").innerHTML=html;
+
+}
+
+async function addTask(){
+
+let task=document.getElementById("taskInput").value;
+
+await fetch("/api/add_task",{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify({
+task:task
+})
+});
+
+loadTasks();
+
+}
+
+async function loadTasks(){
+
+let res=await fetch("/api/tasks");
+
+let data=await res.json();
+
+let html="";
+
+for(let i=0;i<data.length;i++){
+
+html +=
+"<p>"+data[i].task+
+" <button onclick='completeTask("+i+")'>Done</button></p>";
+
+}
+
+document.getElementById("tasks").innerHTML=html;
+
+}
+
+async function completeTask(i){
+
+await fetch("/api/task_complete/"+i);
+
+loadTasks();
+
+}
+
+async function createFlashcard(){
+
+let front=document.getElementById("front").value;
+let back=document.getElementById("back").value;
+
+await fetch("/api/add_flashcard",{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify({
+front:front,
+back:back
+})
+});
+
+loadFlashcards();
+
+}
+
+async function loadFlashcards(){
+
+let res=await fetch("/api/flashcards");
+
+let data=await res.json();
+
+let html="";
+
+for(let c of data){
+
+html +=
+"<p><b>"+c.front+
+"</b> → "+
+c.back+
+"</p>";
+
+}
+
+document.getElementById("flashcards").innerHTML=html;
+
+}
+
+async function satQuiz(){
+
+let res=await fetch("/api/quiz/sat");
+
+let data=await res.json();
+
+document.getElementById("quiz").innerHTML=
+"<h3>"+data.question+"</h3>";
+
+}
+
+async function jeeQuiz(){
+
+let res=await fetch("/api/quiz/jee");
+
+let data=await res.json();
+
+document.getElementById("quiz").innerHTML=
+"<h3>"+data.question+"</h3>";
+
+}
+
+async function updateSAT(){
+
+await fetch("/api/progress/sat");
+
+loadProgress();
+
+}
+
+async function updateJEE(){
+
+await fetch("/api/progress/jee");
+
+loadProgress();
+
+}
+
+async function loadProgress(){
+
+let res=await fetch("/api/progress");
+
+let data=await res.json();
+
+document.getElementById("progress").innerHTML=
+"SAT: "+data.SAT+
+"<br>JEE: "+data.JEE;
+
+}
+
+async function increaseStreak(){
+
+await fetch("/api/streak/increase");
+
+loadStreak();
+
+}
+
+async function loadStreak(){
+
+let res=await fetch("/api/streak");
+
+let data=await res.json();
+
+document.getElementById("streak").innerHTML=
+data.streak+" day streak";
+
+}
+
+loadNotes();
+loadTasks();
+loadFlashcards();
+loadProgress();
+loadStreak();
+
+</script>
+
+</body>
+</html>
+"""
+
+
+# ==========================
+# HOME PAGE
+# ==========================
+
+@app.route("/")
+def home():
+
+    return render_template_string(
+        DASHBOARD_HTML
+    )
+
+
+# ==========================
+# SERVER START
+# ==========================
+
+if __name__ == "__main__":
+
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=True
+    )
